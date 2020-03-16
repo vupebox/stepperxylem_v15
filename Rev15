@@ -1,0 +1,191 @@
+#include <FlexyStepper.h>
+#include <SpeedyStepper.h>
+
+
+//
+// pin assignments
+//
+const int SWITCH1_PIN = 10;
+const int SWITCH2_PIN = 9;
+const int MOTOR_STEP_PIN = 3;
+const int MOTOR_DIRECTION_PIN = 4;
+
+
+int maxStep = 2700;
+int aMaxStep = 6000;
+
+int minStep = 400;
+int aMinStep = 500;
+unsigned long waitTimeMinStep = 3000;
+
+//Others parameters
+float minMultiplier = 1.19;
+float maxMultiplier = 1.19;
+
+
+FlexyStepper stepper;
+//SpeedyStepper stepper;
+
+
+
+int Direction;
+int Switch1;
+int Switch2;
+const int noDirection = 0;
+const int right = -1;
+const int left = 1;
+bool startSlow = false;
+bool startFast = false;
+bool stopMotor = false;
+unsigned long time1;
+
+unsigned long timeSwitch;
+long operation;
+long MaxSteps;
+long MinSteps;
+long currentMinPositionPositive;
+long currentMinPositionNegative;
+long currentMaxPositionPositive;
+long currentMaxPositionNegative;
+long minStepMultiplier;
+long maxStepMultiplier;
+void setup() 
+{
+  pinMode(SWITCH1_PIN,INPUT);
+  pinMode(SWITCH2_PIN,INPUT);
+  pinMode(MOTOR_STEP_PIN,OUTPUT);
+  pinMode(MOTOR_DIRECTION_PIN,OUTPUT);
+  stepper.connectToPins(MOTOR_STEP_PIN, MOTOR_DIRECTION_PIN); 
+  timeSwitch = millis();
+  
+  Direction = noDirection;
+  Switch1 = digitalRead(SWITCH1_PIN); 
+  Switch2 = digitalRead(SWITCH2_PIN);
+  stopMotor = true;
+  currentMinPositionPositive=long(float(minStep*minMultiplier));
+  currentMinPositionNegative=long(float(minStep)*float(minMultiplier))*long(-1);
+  currentMaxPositionPositive=long(float(maxStep)*float(maxMultiplier));
+  currentMaxPositionNegative=long(float(maxStep)*float(maxMultiplier))*long(-1);
+  minStepMultiplier = long(float(minStep)*float(minMultiplier));
+  maxStepMultiplier = long(float(maxStep)*float(maxMultiplier));
+}
+
+
+
+void loop(){
+  // put your main code here, to run repeatedly:
+  if((millis() - timeSwitch)>500){
+    Switch1 = digitalRead(SWITCH1_PIN); 
+    Switch2 = digitalRead(SWITCH2_PIN);
+  }
+
+
+  //Check Switch 1
+  if( Switch1 == HIGH ){
+    if(Direction == noDirection){
+       Direction = right;
+       initMotor(Direction);
+    }
+  }else{
+    if(Direction == right){
+      stopMotor = true;
+    }
+  }
+
+  //Check Switch 2
+  if( Switch2 == HIGH ){
+    if(Direction == noDirection){
+      Direction = left;
+      initMotor(Direction);
+    }
+  }else{
+    if(Direction == left){
+      stopMotor = true;
+    }
+  }
+
+  
+  if(startSlow){
+    if(!stepper.motionComplete()){
+      stepper.processMovement();
+      
+      if(Direction == -1){
+        operation = stepper.getCurrentPositionInSteps() + minStepMultiplier;
+        if(( operation <= 0) && (!stopMotor) ){
+          stepper.setCurrentPositionInSteps(currentMinPositionNegative);
+         }
+      }else{
+        operation = stepper.getCurrentPositionInSteps() - minStepMultiplier;
+        if(( operation >= 0) && (!stopMotor) ){
+          stepper.setCurrentPositionInSteps(currentMinPositionPositive);
+         }
+      }
+     
+      
+
+     if((millis()-time1) > waitTimeMinStep){
+        
+        if( !stopMotor){
+          enableFast(Direction);
+          startFast = true;
+          startSlow = false;
+        }
+      }
+    }else{
+      startSlow = false;
+      Direction = noDirection;  
+      stepper.setCurrentPositionInSteps(0);
+    }
+  }
+  
+  if(startFast){
+    if(!stepper.motionComplete()){
+      stepper.processMovement();
+      if(Direction == -1){
+        operation = stepper.getCurrentPositionInSteps() + maxStepMultiplier;
+        if(( operation <= 0) && (!stopMotor)){
+            stepper.setCurrentPositionInSteps(currentMaxPositionNegative);
+        }
+      }else{
+        operation = stepper.getCurrentPositionInSteps() - maxStepMultiplier;
+        if(( operation >= 0) && (!stopMotor)){
+          stepper.setCurrentPositionInSteps(currentMaxPositionPositive);
+        }
+      }
+      
+    }else{
+      startFast = false;
+      Direction = noDirection;
+      stepper.setCurrentPositionInSteps(0);
+    }
+  }
+
+  /*if(Direction == right){
+    digitalWrite(MOTOR_DIRECTION_PIN,HIGH);
+  }else{
+    digitalWrite(MOTOR_DIRECTION_PIN,LOW);
+  }*/
+}
+
+void initMotor(int direction1){
+  enableSlow(direction1);
+  stepper.setCurrentPositionInSteps(0);
+  startSlow = true;
+  startFast = false;
+  stopMotor = false;
+  timeSwitch = millis();
+  time1 = millis();
+}
+
+void enableSlow(int direction1){
+  stepper.setSpeedInStepsPerSecond(minStep*2);
+  stepper.setAccelerationInStepsPerSecondPerSecond(aMinStep);
+  stepper.setTargetPositionRelativeInSteps(minStep*2*direction1);
+  time1 = millis();
+}
+
+void enableFast(int direction1){
+  stepper.setSpeedInStepsPerSecond(maxStep*2);
+  stepper.setAccelerationInStepsPerSecondPerSecond(aMaxStep);
+  stepper.setTargetPositionRelativeInSteps(maxStep*2*direction1);
+}
